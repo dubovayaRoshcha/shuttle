@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"shuttle/internal/config"
 	"shuttle/internal/robots"
 	"shuttle/internal/rosbridge"
@@ -33,10 +34,13 @@ func (t *Telemetry) Start(ctx context.Context) error {
 		return err
 	}
 
+	config.Info("telemetry subscribed for " + t.defaultID)
+
 	return nil
 }
 
 func (t *Telemetry) handle(topic string, msg json.RawMessage) {
+	config.Info("telemetry message received on topic: " + topic)
 	var odom struct {
 		Pose struct {
 			Pose struct {
@@ -63,6 +67,8 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	if err := t.robots.UpdatePosition(t.defaultID, int(x), int(y)); err != nil {
 		config.Error("failed to update robot position: " + err.Error())
 	}
+
+	config.Info(fmt.Sprintf("telemetry updated robot=%s x=%d y=%d", t.defaultID, int(x), int(y)))
 
 	r := robots.Robot{
 		ID:        t.defaultID,
