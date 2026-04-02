@@ -70,6 +70,28 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 
 	config.Info(fmt.Sprintf("telemetry updated robot=%s x=%d y=%d", t.defaultID, int(x), int(y)))
 
+	poseMsg := struct {
+		RobotID string `json:"robot_id"`
+		X       int    `json:"x"`
+		Y       int    `json:"y"`
+	}{
+		RobotID: t.defaultID,
+		X:       int(x),
+		Y:       int(y),
+	}
+
+	data, err := json.Marshal(poseMsg)
+	if err != nil {
+		config.Error("failed to marshal pose: " + err.Error())
+		return
+	}
+
+	poseTopic := "/robot/" + t.defaultID + "/pose"
+
+	if err := t.ros.Publish(poseTopic, data); err != nil {
+		config.Error("failed to publish pose: " + err.Error())
+	}
+
 	r := robots.Robot{
 		ID:        t.defaultID,
 		X:         int(x),

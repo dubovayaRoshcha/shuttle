@@ -33,6 +33,23 @@ type RouteMessage struct {
 	Points  []RoutePoint `json:"points"`
 }
 
+type PathPoint struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+type PathMessage struct {
+	RobotID string      `json:"robot_id"`
+	Points  []PathPoint `json:"points"`
+}
+
+type PoseMessage struct {
+	RobotID string  `json:"robot_id"`
+	X       int     `json:"x"`
+	Y       int     `json:"y"`
+	Theta   float64 `json:"theta"`
+}
+
 type RosClient interface {
 	Connect(ctx context.Context) error
 	Subscribe(topic string, h Handler) error
@@ -241,4 +258,50 @@ func (c *Client) readLoop() {
 			c.InjectPublish(incoming.Topic, incoming.Msg)
 		}
 	}
+}
+
+// 	ВИЗУАЛИЗАЦИЯ
+
+// PublishPath публикует путь робота в отдельный topic визуализации (/robot/<id>/path).
+// Используется для отображения маршрута в ROS/RViz, не связан напрямую с командным route.
+func (c *Client) PublishPath(robotID string, points []PathPoint) error {
+	if robotID == "" {
+		return errors.New("rosbridge: empty robot id")
+	}
+
+	msg := PathMessage{
+		RobotID: robotID,
+		Points:  points,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	topic := "/robot/" + robotID + "/path"
+	return c.Publish(topic, data)
+}
+
+// PublishPose публикует текущую позицию и ориентацию робота в отдельный topic (/robot/<id>/pose).
+// Используется для визуализации текущего состояния робота в ROS/RViz.
+func (c *Client) PublishPose(robotID string, x int, y int, theta float64) error {
+	if robotID == "" {
+		return errors.New("rosbridge: empty robot id")
+	}
+
+	msg := PoseMessage{
+		RobotID: robotID,
+		X:       x,
+		Y:       y,
+		Theta:   theta,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	topic := "/robot/" + robotID + "/pose"
+	return c.Publish(topic, data)
 }

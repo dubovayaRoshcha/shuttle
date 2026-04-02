@@ -22,6 +22,30 @@ func abs(num int) int {
 	return num
 }
 
+func toRoutePoints(path []world.Point) []rosbridge.RoutePoint {
+	points := make([]rosbridge.RoutePoint, 0, len(path))
+	for _, p := range path {
+		points = append(points, rosbridge.RoutePoint{
+			X: p.X,
+			Y: p.Y,
+		})
+	}
+
+	return points
+}
+
+func toPathPoints(path []world.Point) []rosbridge.PathPoint {
+	points := make([]rosbridge.PathPoint, 0, len(path))
+	for _, p := range path {
+		points = append(points, rosbridge.PathPoint{
+			X: p.X,
+			Y: p.Y,
+		})
+	}
+
+	return points
+}
+
 type Options struct {
 	Queue        *tasks.Queue
 	Manager      *robots.Manager
@@ -212,13 +236,7 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			return err
 		}
 
-		routePoints := make([]rosbridge.RoutePoint, 0, len(path))
-		for _, p := range path {
-			routePoints = append(routePoints, rosbridge.RoutePoint{
-				X: p.X,
-				Y: p.Y,
-			})
-		}
+		routePoints := toRoutePoints(path)
 
 		err = d.ROS.PublishRoute(idleRobot.ID, task.ID, routePoints)
 		if err != nil {
@@ -227,6 +245,22 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			_ = d.Reservations.ReleasePath(phase1, task.ID)
 			_ = d.Reservations.ReleasePath(phase2, task.ID)
 			return err
+		}
+
+		pathPoints := toPathPoints(path)
+
+		if err := d.ROS.PublishPath(idleRobot.ID, pathPoints); err != nil {
+			slog.Error("failed to publish visualization path",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"error", err,
+			)
+		} else {
+			slog.Info("visualization path published",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"points_count", len(pathPoints),
+			)
 		}
 
 		return nil
