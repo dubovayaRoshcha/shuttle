@@ -1,0 +1,78 @@
+package telemetry
+
+import (
+	"context"
+	"encoding/json"
+	"shuttle/internal/config"
+	"shuttle/internal/robots"
+	"shuttle/internal/rosbridge"
+	"shuttle/internal/storage"
+	"time"
+)
+
+type Telemetry struct {
+	ros       rosbridge.RosClient
+	store     storage.Storage
+	robots    *robots.Manager
+	defaultID string
+}
+
+func New(ros rosbridge.RosClient, st storage.Storage, robotsManager *robots.Manager, defaultID string) *Telemetry {
+	return &Telemetry{
+		ros:       ros,
+		store:     st,
+		robots:    robotsManager,
+		defaultID: defaultID,
+	}
+}
+
+func (t *Telemetry) Start(ctx context.Context) error {
+	err := t.ros.SubscribeTelemetry(t.defaultID, t.handle)
+	if err != nil {
+		config.Error("не удалось подписаться на telemetry для " + t.defaultID)
+		return err
+	}
+
+	return nil
+}
+
+func (t *Telemetry) handle(topic string, msg json.RawMessage) {
+	var odom struct {
+		Pose struct {
+			Pose struct {
+				Position struct {
+					X *float64 `json:"x"`
+					Y *float64 `json:"y"`
+				} `json:"position"`
+			} `json:"pose"`
+		} `json:"pose"`
+	}
+
+	if err := json.Unmarshal(msg, &odom); err != nil {
+		config.Error("failed to parse /odom message: " + err.Error())
+		return
+	}
+	if odom.Pose.Pose.Position.X == nil || odom.Pose.Pose.Position.Y == nil {
+		config.Error("not full odom message")
+		return
+	}
+
+	x := *odom.Pose.Pose.Position.X
+	y := *odom.Pose.Pose.Position.Y
+
+	if err := t.robots.UpdatePosition(t.defaultID, int(x), int(y)); err != nil {
+		config.Error("failed to update robot position: " + err.Error())
+	}
+
+	r := robots.Robot{
+		ID:        t.defaultID,
+		X:         int(x),
+		Y:         int(y),
+		Theta:     0,
+		Battery:   90,
+		State:     "moving",
+		UpdatedAt: time.Now(),
+	}
+
+	_ = t.store.UpsertRobot(context.Background(), r)
+}

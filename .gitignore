@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Go
+bin/
+*.exe
+*.out
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# temp
+tmp/
