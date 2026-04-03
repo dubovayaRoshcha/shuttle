@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -20,7 +21,7 @@ type Client struct {
 	conn       *websocket.Conn
 	mu         sync.RWMutex
 	writeMu    sync.Mutex
-	advertised map[string]bool
+	advertised map[string]string
 }
 
 type RoutePoint struct {
@@ -62,7 +63,7 @@ type RosClient interface {
 var _ RosClient = (*Client)(nil)
 
 func New(opts Options) *Client {
-	return &Client{opts: opts, subs: make(map[string][]Handler), advertised: make(map[string]bool)}
+	return &Client{opts: opts, subs: make(map[string][]Handler), advertised: make(map[string]string)}
 }
 
 func (c *Client) Connect(ctx context.Context) error {
@@ -174,6 +175,12 @@ func (c *Client) InjectPublish(topic string, msg json.RawMessage) {
 func (c *Client) Publish(topic string, msg json.RawMessage) error {
 	if topic == "" {
 		return errors.New("rosbridge: empty topic")
+	}
+
+	msgType := topicType(topic)
+	err := c.ensureAdvertised(topic, msgType)
+	if err != nil {
+		return err
 	}
 
 	c.mu.RLock()
@@ -309,9 +316,12 @@ func (c *Client) PublishPose(robotID string, x int, y int, theta float64) error 
 
 func (c *Client) ensureAdvertised(topic string, msgType string) error {
 	c.mu.Lock()
-	if c.advertised[topic] {
+	if existingType, ok := c.advertised[topic]; ok {
 		c.mu.Unlock()
-		return nil
+		if existingType == msgType {
+			return nil
+		}
+		return errors.New("rosbridge: topic already advertised with different type")
 	}
 	conn := c.conn
 	c.mu.Unlock()
@@ -340,10 +350,26 @@ func (c *Client) ensureAdvertised(topic string, msgType string) error {
 	}
 
 	c.mu.Lock()
-	c.advertised[topic] = true
+	c.advertised[topic] = msgType
 	c.mu.Unlock()
 
 	return nil
+}
+
+func topicType(topic string) string {
+	if strings.Contains(topic, "path_marker") {
+		return "visualization_msgs/Marker"
+	}
+	if strings.Contains(topic, "pose_marker") {
+		return "visualization_msgs/Marker"
+	}
+	if strings.Contains(topic, "/pose") {
+		return "std_msgs/String"
+	}
+	if strings.Contains(topic, "/route") {
+		return "std_msgs/String"
+	}
+	return "std_msgs/String"
 }
 
 func (c *Client) PublishMarker(topic string, marker interface{}) error {
