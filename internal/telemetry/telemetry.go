@@ -67,6 +67,10 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	marker := map[string]interface{}{
 		"header": map[string]interface{}{
 			"frame_id": "map",
+			"stamp": map[string]interface{}{
+				"sec":     time.Now().Unix(),
+				"nanosec": time.Now().Nanosecond(),
+			},
 		},
 		"ns":     "robot",
 		"id":     1,
