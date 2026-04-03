@@ -58,6 +58,10 @@ type RosClient interface {
 	SubscribeTelemetry(robotID string, h Handler) error
 	Close() error
 	Publish(topic string, msg json.RawMessage) error
+
+	// визуализация
+	PublishPose(robotID string, x int, y int, theta float64) error
+	PublishRoute(robotID string, taskID string, points []RoutePoint) error
 }
 
 var _ RosClient = (*Client)(nil)
