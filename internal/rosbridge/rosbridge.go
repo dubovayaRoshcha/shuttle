@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -402,7 +403,10 @@ func (c *Client) PublishMarker(topic string, marker interface{}) error {
 		return errors.New("empty topic")
 	}
 
+	slog.Info("PublishMarker called", "topic", topic)
+
 	if err := c.ensureAdvertised(topic, "visualization_msgs/Marker"); err != nil {
+		slog.Error("advertise failed", "topic", topic, "error", err)
 		return err
 	}
 
@@ -411,7 +415,9 @@ func (c *Client) PublishMarker(topic string, marker interface{}) error {
 	c.mu.RUnlock()
 
 	if conn == nil {
-		return errors.New("rosbridge: not connected")
+		err := errors.New("rosbridge: not connected")
+		slog.Error("no connection", "topic", topic)
+		return err
 	}
 
 	payload := map[string]interface{}{
@@ -422,11 +428,22 @@ func (c *Client) PublishMarker(topic string, marker interface{}) error {
 
 	data, err := json.Marshal(payload)
 	if err != nil {
+		slog.Error("marshal failed", "topic", topic, "error", err)
 		return err
 	}
+
+	slog.Info("marker payload", "topic", topic, "json", string(data))
 
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	return conn.WriteMessage(websocket.TextMessage, data)
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	if err != nil {
+		slog.Error("write failed", "topic", topic, "error", err)
+		return err
+	}
+
+	slog.Info("marker sent", "topic", topic)
+
+	return nil
 }
