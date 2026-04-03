@@ -221,13 +221,20 @@ func (c *Client) PublishRoute(robotID string, taskID string, points []RoutePoint
 		Points:  points,
 	}
 
-	data, err := json.Marshal(msg)
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	wrapped, err := json.Marshal(map[string]string{
+		"data": string(raw),
+	})
 	if err != nil {
 		return err
 	}
 
 	topic := "/robot/" + robotID + "/route"
-	return c.Publish(topic, data)
+	return c.Publish(topic, wrapped)
 }
 
 func (c *Client) SubscribeTelemetry(robotID string, h Handler) error {
@@ -305,13 +312,20 @@ func (c *Client) PublishPose(robotID string, x int, y int, theta float64) error 
 		Theta:   theta,
 	}
 
-	data, err := json.Marshal(msg)
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	wrapped, err := json.Marshal(map[string]string{
+		"data": string(raw),
+	})
 	if err != nil {
 		return err
 	}
 
 	topic := "/robot/" + robotID + "/pose"
-	return c.Publish(topic, data)
+	return c.Publish(topic, wrapped)
 }
 
 func (c *Client) ensureAdvertised(topic string, msgType string) error {
