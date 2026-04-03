@@ -46,6 +46,39 @@ func toPathPoints(path []world.Point) []rosbridge.PathPoint {
 	return points
 }
 
+func buildPathMarker(path []world.Point) map[string]interface{} {
+	marker := map[string]interface{}{
+		"header": map[string]interface{}{
+			"frame_id": "map",
+		},
+		"ns":     "path",
+		"id":     1,
+		"type":   4, // LINE_STRIP
+		"action": 0,
+		"scale": map[string]interface{}{
+			"x": 0.1,
+		},
+		"color": map[string]interface{}{
+			"r": 0.0,
+			"g": 1.0,
+			"b": 0.0,
+			"a": 1.0,
+		},
+	}
+
+	points := make([]map[string]interface{}, 0, len(path))
+	for _, p := range path {
+		points = append(points, map[string]interface{}{
+			"x": float64(p.X),
+			"y": float64(p.Y),
+			"z": 0.0,
+		})
+	}
+
+	marker["points"] = points
+	return marker
+}
+
 type Options struct {
 	Queue        *tasks.Queue
 	Manager      *robots.Manager
@@ -245,6 +278,22 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			_ = d.Reservations.ReleasePath(phase1, task.ID)
 			_ = d.Reservations.ReleasePath(phase2, task.ID)
 			return err
+		}
+
+		marker := buildPathMarker(path)
+
+		if err := d.ROS.PublishMarker("/robot/"+idleRobot.ID+"/path_marker", marker); err != nil {
+			slog.Error("failed to publish path marker",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"error", err,
+			)
+		} else {
+			slog.Info("path marker published",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"points_count", len(path),
+			)
 		}
 
 		pathPoints := toPathPoints(path)

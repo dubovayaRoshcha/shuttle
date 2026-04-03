@@ -15,11 +15,12 @@ type Options struct {
 	URL string
 }
 type Client struct {
-	opts    Options
-	subs    map[string][]Handler
-	conn    *websocket.Conn
-	mu      sync.RWMutex
-	writeMu sync.Mutex
+	opts       Options
+	subs       map[string][]Handler
+	conn       *websocket.Conn
+	mu         sync.RWMutex
+	writeMu    sync.Mutex
+	advertised map[string]bool
 }
 
 type RoutePoint struct {
@@ -61,7 +62,7 @@ type RosClient interface {
 var _ RosClient = (*Client)(nil)
 
 func New(opts Options) *Client {
-	return &Client{opts: opts, subs: make(map[string][]Handler)}
+	return &Client{opts: opts, subs: make(map[string][]Handler), advertised: make(map[string]bool)}
 }
 
 func (c *Client) Connect(ctx context.Context) error {
@@ -304,4 +305,77 @@ func (c *Client) PublishPose(robotID string, x int, y int, theta float64) error 
 
 	topic := "/robot/" + robotID + "/pose"
 	return c.Publish(topic, data)
+}
+
+func (c *Client) ensureAdvertised(topic string, msgType string) error {
+	c.mu.Lock()
+	if c.advertised[topic] {
+		c.mu.Unlock()
+		return nil
+	}
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return errors.New("rosbridge: not connected")
+	}
+
+	payload := map[string]interface{}{
+		"op":    "advertise",
+		"topic": topic,
+		"type":  msgType,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.advertised[topic] = true
+	c.mu.Unlock()
+
+	return nil
+}
+
+func (c *Client) PublishMarker(topic string, marker interface{}) error {
+	if topic == "" {
+		return errors.New("empty topic")
+	}
+
+	if err := c.ensureAdvertised(topic, "visualization_msgs/Marker"); err != nil {
+		return err
+	}
+
+	c.mu.RLock()
+	conn := c.conn
+	c.mu.RUnlock()
+
+	if conn == nil {
+		return errors.New("rosbridge: not connected")
+	}
+
+	payload := map[string]interface{}{
+		"op":    "publish",
+		"topic": topic,
+		"msg":   marker,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	return conn.WriteMessage(websocket.TextMessage, data)
 }

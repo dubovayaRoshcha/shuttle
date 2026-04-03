@@ -64,6 +64,44 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	x := *odom.Pose.Pose.Position.X
 	y := *odom.Pose.Pose.Position.Y
 
+	marker := map[string]interface{}{
+		"header": map[string]interface{}{
+			"frame_id": "map",
+		},
+		"ns":     "robot",
+		"id":     1,
+		"type":   2,
+		"action": 0,
+		"scale": map[string]interface{}{
+			"x": 0.3,
+			"y": 0.3,
+			"z": 0.3,
+		},
+		"color": map[string]interface{}{
+			"r": 1.0,
+			"g": 0.0,
+			"b": 0.0,
+			"a": 1.0,
+		},
+		"pose": map[string]interface{}{
+			"position": map[string]interface{}{
+				"x": x,
+				"y": y,
+				"z": 0.0,
+			},
+		},
+	}
+
+	if client, ok := t.ros.(*rosbridge.Client); ok {
+		err := client.PublishMarker(
+			"/robot/"+t.defaultID+"/pose_marker",
+			marker,
+		)
+		if err != nil {
+			config.Error("failed to publish marker: " + err.Error())
+		}
+	}
+
 	if err := t.robots.UpdatePosition(t.defaultID, int(x), int(y)); err != nil {
 		config.Error("failed to update robot position: " + err.Error())
 	}
