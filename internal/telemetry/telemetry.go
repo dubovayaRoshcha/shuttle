@@ -90,6 +90,8 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 
 	if err := t.ros.Publish(poseTopic, data); err != nil {
 		config.Error("failed to publish pose: " + err.Error())
+	} else {
+		config.Info("pose published to " + poseTopic)
 	}
 
 	r := robots.Robot{
