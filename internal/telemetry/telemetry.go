@@ -89,6 +89,12 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 				"y": y,
 				"z": 0.0,
 			},
+			"orientation": map[string]interface{}{
+				"x": 0.0,
+				"y": 0.0,
+				"z": 0.0,
+				"w": 1.0,
+			},
 		},
 	}
 
