@@ -102,9 +102,18 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 		},
 	}
 
+	poseMarkerTopic := "/robot/" + t.defaultID + "/pose_marker"
+
+	markerJSON, err := json.Marshal(marker)
+	if err != nil {
+		config.Error("failed to marshal pose marker: " + err.Error())
+	} else {
+		config.Info("publishing pose marker to " + poseMarkerTopic + ": " + string(markerJSON))
+	}
+
 	if client, ok := t.ros.(*rosbridge.Client); ok {
 		err := client.PublishMarker(
-			"/robot/"+t.defaultID+"/pose_marker",
+			poseMarkerTopic,
 			marker,
 		)
 		if err != nil {
