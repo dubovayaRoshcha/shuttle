@@ -284,22 +284,26 @@ func (c *Client) readLoop() {
 // PublishPath публикует путь робота в отдельный topic визуализации (/robot/<id>/path).
 // Используется для отображения маршрута в ROS/RViz, не связан напрямую с командным route.
 func (c *Client) PublishPath(robotID string, points []PathPoint) error {
-	if robotID == "" {
-		return errors.New("rosbridge: empty robot id")
-	}
-
 	msg := PathMessage{
 		RobotID: robotID,
 		Points:  points,
 	}
 
-	data, err := json.Marshal(msg)
+	raw, err := json.Marshal(msg)
 	if err != nil {
 		return err
 	}
 
-	topic := "/robot/" + robotID + "/path"
-	return c.Publish(topic, data)
+	wrapped := map[string]string{
+		"data": string(raw),
+	}
+
+	payload, err := json.Marshal(wrapped)
+	if err != nil {
+		return err
+	}
+
+	return c.Publish("/robot/"+robotID+"/path", payload)
 }
 
 // PublishPose публикует текущую позицию и ориентацию робота в отдельный topic (/robot/<id>/pose).
@@ -385,6 +389,9 @@ func topicType(topic string) string {
 		return "std_msgs/String"
 	}
 	if strings.Contains(topic, "/route") {
+		return "std_msgs/String"
+	}
+	if strings.Contains(topic, "/path") {
 		return "std_msgs/String"
 	}
 	return "std_msgs/String"
