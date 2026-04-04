@@ -79,16 +79,6 @@ func main() {
 		return
 	}
 
-	go func() {
-		time.Sleep(3 * time.Second)
-
-		if err := tm.PublishCurrentPoseMarker(); err != nil {
-			config.Error(fmt.Sprintf("failed to re-publish current pose marker: %v", err))
-		} else {
-			config.Info("current pose marker re-published successfully")
-		}
-	}()
-
 	if debugROS {
 		go func() {
 			time.Sleep(time.Second) // ждём секунду, чтобы telemetry успела подписаться
@@ -110,9 +100,30 @@ func main() {
 	srv := api.New(st, disp)
 	addr := fmt.Sprintf(":%d", cfg.HTTP.Port)
 
+	rootMux := http.NewServeMux()
+
+	rootMux.HandleFunc("/debug/republish-pose-marker", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := tm.PublishCurrentPoseMarker(); err != nil {
+			config.Error("republish pose marker failed: " + err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		config.Info("republish pose marker requested via debug endpoint")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	rootMux.Handle("/", srv.Router())
+
 	httpSrv := &http.Server{
 		Addr:         addr,
-		Handler:      srv.Router(),
+		Handler:      rootMux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
