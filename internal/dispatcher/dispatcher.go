@@ -79,6 +79,31 @@ func buildPathMarker(path []world.Point) map[string]interface{} {
 	return marker
 }
 
+func normalizePath(path []world.Point) []world.Point {
+	if len(path) <= 1 {
+		return path
+	}
+
+	normalized := make([]world.Point, 0, len(path))
+
+	for _, p := range path {
+		n := len(normalized)
+
+		if n > 0 && normalized[n-1] == p {
+			continue
+		}
+
+		if n >= 2 && normalized[n-2] == p {
+			normalized = normalized[:n-1]
+			continue
+		}
+
+		normalized = append(normalized, p)
+	}
+
+	return normalized
+}
+
 type Options struct {
 	Queue        *tasks.Queue
 	Manager      *robots.Manager
@@ -233,10 +258,30 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			path = append(path, cell)
 		}
 
-		if len(phase2) >= 2 {
-			for _, cell := range phase2[1:] {
-				path = append(path, cell)
+		if len(phase2) > 0 {
+			if len(path) > 0 && path[len(path)-1] == phase2[0] {
+				// нормальный случай — пропускаем дубликат
+				for _, cell := range phase2[1:] {
+					path = append(path, cell)
+				}
+			} else {
+				// защитный случай — добавляем всё
+				for _, cell := range phase2 {
+					path = append(path, cell)
+				}
 			}
+		}
+
+		rawPathLen := len(path)
+		path = normalizePath(path)
+
+		if len(path) != rawPathLen {
+			slog.Info("path normalized",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"before", rawPathLen,
+				"after", len(path),
+			)
 		}
 
 		task.Route = path
