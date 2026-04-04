@@ -79,6 +79,13 @@ func main() {
 		return
 	}
 
+	go func() {
+		time.Sleep(20 * time.Second)
+		if err := tm.PublishCurrentPoseMarker(); err != nil {
+			config.Error("republish pose marker failed: " + err.Error())
+		}
+	}()
+
 	if debugROS {
 		go func() {
 			time.Sleep(time.Second) // ждём секунду, чтобы telemetry успела подписаться
