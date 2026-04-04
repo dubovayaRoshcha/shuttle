@@ -272,18 +272,6 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			}
 		}
 
-		rawPathLen := len(path)
-		path = normalizePath(path)
-
-		if len(path) != rawPathLen {
-			slog.Info("path normalized",
-				"robot_id", idleRobot.ID,
-				"task_id", task.ID,
-				"before", rawPathLen,
-				"after", len(path),
-			)
-		}
-
 		task.Route = path
 
 		err = d.Manager.SetBusy(idleRobot.ID, task.ID)
