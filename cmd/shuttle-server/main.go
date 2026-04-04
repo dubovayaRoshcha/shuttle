@@ -73,10 +73,19 @@ func main() {
 		}
 	}
 
+	if err := tm.Start(ctx); err != nil {
+		config.Error("telemetry start failed: " + err.Error())
+		stop()
+		return
+	}
+
 	go func() {
-		if err := tm.Start(ctx); err != nil {
-			config.Error("telemetry start failed: " + err.Error())
-			stop()
+		time.Sleep(3 * time.Second)
+
+		if err := tm.PublishCurrentPoseMarker(); err != nil {
+			config.Error(fmt.Sprintf("failed to re-publish current pose marker: %v", err))
+		} else {
+			config.Info("current pose marker re-published successfully")
 		}
 	}()
 

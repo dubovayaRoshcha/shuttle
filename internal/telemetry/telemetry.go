@@ -8,6 +8,7 @@ import (
 	"shuttle/internal/robots"
 	"shuttle/internal/rosbridge"
 	"shuttle/internal/storage"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,11 @@ type Telemetry struct {
 	store     storage.Storage
 	robots    *robots.Manager
 	defaultID string
+
+	mu      sync.RWMutex
+	lastX   int
+	lastY   int
+	hasPose bool
 }
 
 func New(ros rosbridge.RosClient, st storage.Storage, robotsManager *robots.Manager, defaultID string) *Telemetry {
@@ -64,61 +70,14 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	x := *odom.Pose.Pose.Position.X
 	y := *odom.Pose.Pose.Position.Y
 
-	marker := map[string]interface{}{
-		"header": map[string]interface{}{
-			"frame_id": "map",
-			"stamp": map[string]interface{}{
-				"sec":     time.Now().Unix(),
-				"nanosec": time.Now().Nanosecond(),
-			},
-		},
-		"ns":     "robot",
-		"id":     1,
-		"type":   2,
-		"action": 0,
-		"scale": map[string]interface{}{
-			"x": 0.3,
-			"y": 0.3,
-			"z": 0.3,
-		},
-		"color": map[string]interface{}{
-			"r": 1.0,
-			"g": 0.0,
-			"b": 0.0,
-			"a": 1.0,
-		},
-		"pose": map[string]interface{}{
-			"position": map[string]interface{}{
-				"x": x,
-				"y": y,
-				"z": 0.0,
-			},
-			"orientation": map[string]interface{}{
-				"x": 0.0,
-				"y": 0.0,
-				"z": 0.0,
-				"w": 1.0,
-			},
-		},
-	}
+	t.mu.Lock()
+	t.lastX = int(x)
+	t.lastY = int(y)
+	t.hasPose = true
+	t.mu.Unlock()
 
-	poseMarkerTopic := "/robot/" + t.defaultID + "/pose_marker"
-
-	markerJSON, err := json.Marshal(marker)
-	if err != nil {
-		config.Error("failed to marshal pose marker: " + err.Error())
-	} else {
-		config.Info("publishing pose marker to " + poseMarkerTopic + ": " + string(markerJSON))
-	}
-
-	if client, ok := t.ros.(*rosbridge.Client); ok {
-		err := client.PublishMarker(
-			poseMarkerTopic,
-			marker,
-		)
-		if err != nil {
-			config.Error("failed to publish marker: " + err.Error())
-		}
+	if err := t.publishPoseMarker(int(x), int(y), "odom"); err != nil {
+		config.Error("failed to publish marker: " + err.Error())
 	}
 
 	if err := t.robots.UpdatePosition(t.defaultID, int(x), int(y)); err != nil {
@@ -144,4 +103,85 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	}
 
 	_ = t.store.UpsertRobot(context.Background(), r)
+}
+
+func (t *Telemetry) publishPoseMarker(x, y int, source string) error {
+	now := time.Now()
+
+	marker := map[string]interface{}{
+		"header": map[string]interface{}{
+			"frame_id": "map",
+			"stamp": map[string]interface{}{
+				"sec":     now.Unix(),
+				"nanosec": now.Nanosecond(),
+			},
+		},
+		"ns":     "robot",
+		"id":     1,
+		"type":   2,
+		"action": 0,
+		"scale": map[string]interface{}{
+			"x": 0.3,
+			"y": 0.3,
+			"z": 0.3,
+		},
+		"color": map[string]interface{}{
+			"r": 1.0,
+			"g": 0.0,
+			"b": 0.0,
+			"a": 1.0,
+		},
+		"pose": map[string]interface{}{
+			"position": map[string]interface{}{
+				"x": float64(x),
+				"y": float64(y),
+				"z": 0.0,
+			},
+			"orientation": map[string]interface{}{
+				"x": 0.0,
+				"y": 0.0,
+				"z": 0.0,
+				"w": 1.0,
+			},
+		},
+	}
+
+	poseMarkerTopic := "/robot/" + t.defaultID + "/pose_marker"
+
+	markerJSON, err := json.Marshal(marker)
+	if err != nil {
+		config.Error("failed to marshal pose marker: " + err.Error())
+	} else {
+		config.Info("publishing pose marker from " + source + " to " + poseMarkerTopic + ": " + string(markerJSON))
+	}
+
+	client, ok := t.ros.(*rosbridge.Client)
+	if !ok {
+		return fmt.Errorf("ros client does not support marker publishing")
+	}
+
+	if err := client.PublishMarker(poseMarkerTopic, marker); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *Telemetry) PublishCurrentPoseMarker() error {
+	t.mu.RLock()
+	x := t.lastX
+	y := t.lastY
+	hasPose := t.hasPose
+	t.mu.RUnlock()
+
+	if !hasPose {
+		return fmt.Errorf("current pose is not available yet")
+	}
+
+	if err := t.publishPoseMarker(x, y, "republish"); err != nil {
+		return err
+	}
+
+	config.Info(fmt.Sprintf("current pose marker re-published robot=%s x=%d y=%d", t.defaultID, x, y))
+	return nil
 }
