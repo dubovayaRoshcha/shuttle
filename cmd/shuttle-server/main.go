@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/signal"
@@ -64,14 +63,14 @@ func main() {
 
 	tm := telemetry.New(rb, st, manager, cfg.App.DefaultRobotID) // DefaultRobotID из config.yaml
 
-	if debugROS {
+	/*if debugROS {
 		err = rb.Subscribe("/robot/"+cfg.App.DefaultRobotID+"/route", func(topic string, msg json.RawMessage) {
 			config.Info("route published: " + string(msg))
 		}) // это временно для проверки
 		if err != nil {
 			config.Error("route subscribe failed: " + err.Error())
 		}
-	}
+	}*/
 
 	if err := tm.Start(ctx); err != nil {
 		config.Error("telemetry start failed: " + err.Error())
