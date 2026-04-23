@@ -145,6 +145,29 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	rootMux.HandleFunc("/debug/publish-robot-state", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		robotID := r.URL.Query().Get("id")
+		if robotID == "" {
+			http.Error(w, "robot id is empty", http.StatusBadRequest)
+			return
+		}
+
+		if err := tm.PublishRobotState(robotID); err != nil {
+			config.Error("publish robot state failed: " + err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		config.Info("publish robot state requested via debug endpoint for " + robotID)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
 	rootMux.Handle("/", srv.Router())
 
 	httpSrv := &http.Server{
