@@ -113,3 +113,67 @@ func TestConcurrentUpsertGet(t *testing.T) {
 		t.Fatalf("expected robot to exist after concurrent operations")
 	}
 }
+
+func TestMultipleRobotsIsolation(t *testing.T) {
+	m := NewManager()
+
+	if err := m.Upsert(Robot{ID: "r1", X: 0, Y: 0}); err != nil {
+		t.Fatalf("Upsert r1 error: %v", err)
+	}
+
+	if err := m.Upsert(Robot{ID: "r2", X: 8, Y: 8}); err != nil {
+		t.Fatalf("Upsert r2 error: %v", err)
+	}
+
+	if err := m.SetBusy("r1", "T-1"); err != nil {
+		t.Fatalf("SetBusy r1 error: %v", err)
+	}
+
+	if err := m.Step("r1", 1, 0, 0); err != nil {
+		t.Fatalf("Step r1 error: %v", err)
+	}
+
+	r1, err := m.GetState("r1")
+	if err != nil {
+		t.Fatalf("GetState r1 error: %v", err)
+	}
+
+	r2, err := m.GetState("r2")
+	if err != nil {
+		t.Fatalf("GetState r2 error: %v", err)
+	}
+
+	if r1.X != 1 || r1.Y != 0 {
+		t.Fatalf("r1 position = (%d,%d), want (1,0)", r1.X, r1.Y)
+	}
+
+	if r1.State != StateBusy {
+		t.Fatalf("r1 state = %q, want %q", r1.State, StateBusy)
+	}
+
+	if r2.X != 8 || r2.Y != 8 {
+		t.Fatalf("r2 position changed = (%d,%d), want (8,8)", r2.X, r2.Y)
+	}
+
+	if r2.State != StateIdle {
+		t.Fatalf("r2 state = %q, want %q", r2.State, StateIdle)
+	}
+
+	list := m.List()
+	if len(list) != 2 {
+		t.Fatalf("List len = %d, want 2", len(list))
+	}
+
+	if err := m.SetFree("r1"); err != nil {
+		t.Fatalf("SetFree r1 error: %v", err)
+	}
+
+	r1, err = m.GetState("r1")
+	if err != nil {
+		t.Fatalf("GetState r1 after SetFree error: %v", err)
+	}
+
+	if r1.State != StateIdle {
+		t.Fatalf("r1 state after SetFree = %q, want %q", r1.State, StateIdle)
+	}
+}

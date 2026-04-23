@@ -161,3 +161,19 @@ func (h *Handlers) TelemetryRobots(w http.ResponseWriter, r *http.Request) {
 }
 
 */
+
+func (h *Handlers) Robots(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	robotsList := h.dispatcher.Manager.List()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(robotsList); err != nil {
+		config.Error("failed to encode robots list: " + err.Error())
+	}
+}

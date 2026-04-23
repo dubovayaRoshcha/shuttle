@@ -23,6 +23,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("/tasks", h.Tasks)              // GET POST /tasks
 	mux.HandleFunc("/tasks/", h.TaskByID)          // GET /tasks/ (префикс под /tasks/{id})
 	mux.HandleFunc("/dispatch/run", h.DispatchRun) // POST /dispatch/run
+	mux.HandleFunc("/robots", h.Robots)            // GET /robots
 
 	return mux
 }

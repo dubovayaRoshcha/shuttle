@@ -43,11 +43,30 @@ func main() {
 	// 4) Пока тут задаются параметры для отладки
 	queue := tasks.NewQueue()
 	manager := robots.NewManager()
-	manager.Upsert(robots.Robot{
-		ID: cfg.App.DefaultRobotID,
-		X:  0,
-		Y:  0,
-	})
+
+	if err := manager.Upsert(robots.Robot{
+		ID:      "r1",
+		X:       0,
+		Y:       0,
+		Battery: 100,
+		State:   robots.StateIdle,
+	}); err != nil {
+		config.Error("failed to upsert robot r1: " + err.Error())
+		stop()
+		return
+	}
+
+	if err := manager.Upsert(robots.Robot{
+		ID:      "r2",
+		X:       8,
+		Y:       8,
+		Battery: 100,
+		State:   robots.StateIdle,
+	}); err != nil {
+		config.Error("failed to upsert robot r2: " + err.Error())
+		stop()
+		return
+	}
 	w := world.New(10, 10, []world.Point{})
 	res := reservations.NewManager()
 	rep := replanner.NewService(w, res)
