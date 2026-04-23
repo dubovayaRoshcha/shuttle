@@ -79,19 +79,19 @@ func main() {
 		return
 	}
 
-	go func() {
+	/*go func() {
 		time.Sleep(20 * time.Second)
 		if err := tm.PublishCurrentPoseMarker(); err != nil {
 			config.Error("republish pose marker failed: " + err.Error())
 		}
-	}()
+	}()*/
 
-	if debugROS {
+	/*if debugROS {
 		go func() {
 			time.Sleep(time.Second) // ждём секунду, чтобы telemetry успела подписаться
 			rb.InjectPublish("/robot/"+cfg.App.DefaultRobotID+"/odom", []byte(`{"pose":{"pose":{"position":{"x":2.0,"y":3.0}}}}`))
 		}()
-	}
+	}*/
 
 	disp := dispatcher.New(dispatcher.Options{
 		Queue:        queue,
@@ -100,6 +100,7 @@ func main() {
 		Reservations: res,
 		Replanner:    rep,
 		ROS:          rb,
+		Publisher:    tm,
 	})
 
 	// 5) HTTP API

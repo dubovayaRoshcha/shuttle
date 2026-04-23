@@ -12,6 +12,7 @@ import (
 	"shuttle/internal/rosbridge"
 	"shuttle/internal/tasks"
 	"shuttle/internal/world"
+	"time"
 )
 
 func abs(num int) int {
@@ -20,6 +21,12 @@ func abs(num int) int {
 	}
 
 	return num
+}
+
+func calcTheta(from, to world.Point) float64 {
+	dx := float64(to.X - from.X)
+	dy := float64(to.Y - from.Y)
+	return math.Atan2(dy, dx)
 }
 
 func toRoutePoints(path []world.Point) []rosbridge.RoutePoint {
@@ -79,29 +86,8 @@ func buildPathMarker(path []world.Point) map[string]interface{} {
 	return marker
 }
 
-func normalizePath(path []world.Point) []world.Point {
-	if len(path) <= 1 {
-		return path
-	}
-
-	normalized := make([]world.Point, 0, len(path))
-
-	for _, p := range path {
-		n := len(normalized)
-
-		if n > 0 && normalized[n-1] == p {
-			continue
-		}
-
-		if n >= 2 && normalized[n-2] == p {
-			normalized = normalized[:n-1]
-			continue
-		}
-
-		normalized = append(normalized, p)
-	}
-
-	return normalized
+type RobotStatePublisher interface {
+	PublishRobotState(robotID string) error
 }
 
 type Options struct {
@@ -111,6 +97,7 @@ type Options struct {
 	Reservations *reservations.Manager
 	Replanner    *replanner.Service
 	ROS          *rosbridge.Client
+	Publisher    RobotStatePublisher
 }
 
 type Dispatcher struct {
@@ -120,6 +107,7 @@ type Dispatcher struct {
 	Reservations *reservations.Manager
 	Replanner    *replanner.Service
 	ROS          *rosbridge.Client
+	Publisher    RobotStatePublisher
 }
 
 func New(opt Options) *Dispatcher {
@@ -130,6 +118,148 @@ func New(opt Options) *Dispatcher {
 		Reservations: opt.Reservations,
 		Replanner:    opt.Replanner,
 		ROS:          opt.ROS,
+		Publisher:    opt.Publisher,
+	}
+}
+
+func (d *Dispatcher) executeTask(robotID, taskID string, route []world.Point) {
+	slog.Info("task execution started",
+		"robot_id", robotID,
+		"task_id", taskID,
+		"route_len", len(route),
+	)
+
+	if len(route) == 0 {
+		slog.Warn("empty route for execution",
+			"robot_id", robotID,
+			"task_id", taskID,
+		)
+		d.finishTask(robotID, taskID, "failed", route)
+		return
+	}
+
+	currentRobot, err := d.Manager.GetState(robotID)
+	if err != nil {
+		slog.Error("failed to get robot state before execution",
+			"robot_id", robotID,
+			"task_id", taskID,
+			"error", err,
+		)
+		d.finishTask(robotID, taskID, "failed", route)
+		return
+	}
+
+	startIndex := 0
+	if len(route) > 0 && currentRobot.X == route[0].X && currentRobot.Y == route[0].Y {
+		startIndex = 1
+	}
+
+	currentPoint := world.Point{X: currentRobot.X, Y: currentRobot.Y}
+
+	for i := startIndex; i < len(route); i++ {
+		nextPoint := route[i]
+		theta := calcTheta(currentPoint, nextPoint)
+
+		err := d.Manager.Step(robotID, nextPoint.X, nextPoint.Y, theta)
+		if err != nil {
+			slog.Error("failed to step robot",
+				"robot_id", robotID,
+				"task_id", taskID,
+				"step", i,
+				"x", nextPoint.X,
+				"y", nextPoint.Y,
+				"theta", theta,
+				"error", err,
+			)
+
+			d.finishTask(robotID, taskID, "failed", route)
+
+			slog.Info("task execution failed",
+				"robot_id", robotID,
+				"task_id", taskID,
+				"failed_step", i,
+			)
+			return
+		}
+
+		if err := d.Publisher.PublishRobotState(robotID); err != nil {
+			slog.Error("failed to publish robot state after step",
+				"robot_id", robotID,
+				"task_id", taskID,
+				"step", i,
+				"x", nextPoint.X,
+				"y", nextPoint.Y,
+				"theta", theta,
+				"error", err,
+			)
+
+			d.finishTask(robotID, taskID, "failed", route)
+
+			slog.Info("task execution failed",
+				"robot_id", robotID,
+				"task_id", taskID,
+				"failed_step", i,
+			)
+			return
+		}
+
+		slog.Info("robot moved",
+			"robot_id", robotID,
+			"task_id", taskID,
+			"step", i,
+			"x", nextPoint.X,
+			"y", nextPoint.Y,
+			"theta", theta,
+		)
+
+		currentPoint = nextPoint
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	d.finishTask(robotID, taskID, "completed", route)
+
+	slog.Info("task execution completed",
+		"robot_id", robotID,
+		"task_id", taskID,
+	)
+}
+
+func (d *Dispatcher) finishTask(robotID, taskID, status string, route []world.Point) {
+	if err := d.Queue.UpdateStatus(taskID, status); err != nil {
+		slog.Error("failed to update task status",
+			"robot_id", robotID,
+			"task_id", taskID,
+			"status", status,
+			"error", err,
+		)
+	}
+
+	if err := d.Manager.SetFree(robotID); err != nil {
+		slog.Error("failed to free robot",
+			"robot_id", robotID,
+			"task_id", taskID,
+			"status", status,
+			"error", err,
+		)
+	} else {
+		if err := d.Publisher.PublishRobotState(robotID); err != nil {
+			slog.Error("failed to publish final robot state",
+				"robot_id", robotID,
+				"task_id", taskID,
+				"status", status,
+				"error", err,
+			)
+		}
+	}
+
+	if err := d.Reservations.ReleasePath(route, taskID); err != nil {
+		slog.Error("failed to release reservations",
+			"robot_id", robotID,
+			"task_id", taskID,
+			"status", status,
+			"error", err,
+		)
 	}
 }
 
@@ -156,6 +286,10 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 
 	if d.ROS == nil {
 		return errors.New("expected rosbridge")
+	}
+
+	if d.Publisher == nil {
+		return errors.New("expected robot state publisher")
 	}
 
 	select {
@@ -302,6 +436,14 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			return err
 		}
 
+		if err := d.Publisher.PublishRobotState(idleRobot.ID); err != nil {
+			slog.Error("failed to publish robot state after assignment",
+				"robot_id", idleRobot.ID,
+				"task_id", task.ID,
+				"error", err,
+			)
+		}
+
 		routePoints := toRoutePoints(path)
 
 		err = d.ROS.PublishRoute(idleRobot.ID, task.ID, routePoints)
@@ -312,6 +454,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) error {
 			_ = d.Reservations.ReleasePath(phase2, task.ID)
 			return err
 		}
+
+		routeCopy := append([]world.Point(nil), task.Route...)
+		go d.executeTask(idleRobot.ID, task.ID, routeCopy)
 
 		marker := buildPathMarker(path)
 

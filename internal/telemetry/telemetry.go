@@ -47,6 +47,7 @@ func (t *Telemetry) Start(ctx context.Context) error {
 
 func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	config.Info("telemetry message received on topic: " + topic)
+
 	var odom struct {
 		Pose struct {
 			Pose struct {
@@ -76,20 +77,14 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	t.hasPose = true
 	t.mu.Unlock()
 
-	if err := t.publishPoseMarker(int(x), int(y), "odom"); err != nil {
-		config.Error("failed to publish marker: " + err.Error())
-	}
-
 	if err := t.robots.UpdatePosition(t.defaultID, int(x), int(y)); err != nil {
 		config.Error("failed to update robot position: " + err.Error())
 	}
 
 	config.Info(fmt.Sprintf("telemetry updated robot=%s x=%d y=%d", t.defaultID, int(x), int(y)))
 
-	if err := t.ros.PublishPose(t.defaultID, int(x), int(y), 0); err != nil {
-		config.Error("failed to publish pose: " + err.Error())
-	} else {
-		config.Info("pose published to /robot/" + t.defaultID + "/pose")
+	if err := t.publishRobotStateFromManager(t.defaultID); err != nil {
+		config.Error("failed to publish robot state from manager: " + err.Error())
 	}
 
 	r := robots.Robot{
@@ -105,7 +100,7 @@ func (t *Telemetry) handle(topic string, msg json.RawMessage) {
 	_ = t.store.UpsertRobot(context.Background(), r)
 }
 
-func (t *Telemetry) publishPoseMarker(x, y int, source string) error {
+func (t *Telemetry) publishPoseMarker(robotID string, x, y int, source string) error {
 	now := time.Now()
 
 	marker := map[string]interface{}{
@@ -146,7 +141,7 @@ func (t *Telemetry) publishPoseMarker(x, y int, source string) error {
 		},
 	}
 
-	poseMarkerTopic := "/robot/" + t.defaultID + "/pose_marker"
+	poseMarkerTopic := "/robot/" + robotID + "/pose_marker"
 
 	markerJSON, err := json.Marshal(marker)
 	if err != nil {
@@ -178,10 +173,62 @@ func (t *Telemetry) PublishCurrentPoseMarker() error {
 		return fmt.Errorf("current pose is not available yet")
 	}
 
-	if err := t.publishPoseMarker(x, y, "republish"); err != nil {
+	if err := t.publishPoseMarker(t.defaultID, x, y, "republish"); err != nil {
 		return err
 	}
 
 	config.Info(fmt.Sprintf("current pose marker re-published robot=%s x=%d y=%d", t.defaultID, x, y))
+	return nil
+}
+
+func (t *Telemetry) publishRobotStateFromManager(robotID string) error {
+	if robotID == "" {
+		return fmt.Errorf("robot id is empty")
+	}
+
+	r, err := t.robots.GetState(robotID)
+	if err != nil {
+		return err
+	}
+
+	if err := t.publishPoseMarker(robotID, r.X, r.Y, "manager"); err != nil {
+		return err
+	}
+
+	if err := t.ros.PublishPose(robotID, r.X, r.Y, r.Theta); err != nil {
+		return err
+	}
+
+	config.Info(fmt.Sprintf(
+		"robot state published from manager robot=%s x=%d y=%d theta=%.2f",
+		r.ID, r.X, r.Y, r.Theta,
+	))
+
+	return nil
+}
+
+func (t *Telemetry) PublishRobotState(robotID string) error {
+	if robotID == "" {
+		return fmt.Errorf("robot id is empty")
+	}
+
+	if err := t.publishRobotStateFromManager(robotID); err != nil {
+		return err
+	}
+
+	if robotID == t.defaultID {
+		r, err := t.robots.GetState(robotID)
+		if err != nil {
+			return err
+		}
+
+		t.mu.Lock()
+		t.lastX = r.X
+		t.lastY = r.Y
+		t.hasPose = true
+		t.mu.Unlock()
+	}
+
+	config.Info("robot state published on demand for " + robotID)
 	return nil
 }
