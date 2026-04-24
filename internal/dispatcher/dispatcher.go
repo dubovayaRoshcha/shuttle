@@ -12,6 +12,7 @@ import (
 	"shuttle/internal/rosbridge"
 	"shuttle/internal/tasks"
 	"shuttle/internal/world"
+	"sync"
 	"time"
 )
 
@@ -108,6 +109,7 @@ type Dispatcher struct {
 	Replanner    *replanner.Service
 	ROS          *rosbridge.Client
 	Publisher    RobotStatePublisher
+	mu           sync.Mutex
 }
 
 func New(opt Options) *Dispatcher {
@@ -264,6 +266,8 @@ func (d *Dispatcher) finishTask(robotID, taskID, status string, route []world.Po
 }
 
 func (d *Dispatcher) RunOnce(ctx context.Context) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.Queue == nil {
 		return errors.New("expected queue")
 	}
