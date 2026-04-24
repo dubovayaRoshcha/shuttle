@@ -46,8 +46,8 @@ func main() {
 
 	if err := manager.Upsert(robots.Robot{
 		ID:      "r1",
-		X:       0,
-		Y:       0,
+		X:       2,
+		Y:       3,
 		Battery: 100,
 		State:   robots.StateIdle,
 	}); err != nil {
@@ -58,8 +58,8 @@ func main() {
 
 	if err := manager.Upsert(robots.Robot{
 		ID:      "r2",
-		X:       8,
-		Y:       8,
+		X:       6,
+		Y:       3,
 		Battery: 100,
 		State:   robots.StateIdle,
 	}); err != nil {
